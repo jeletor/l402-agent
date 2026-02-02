@@ -1,0 +1,15 @@
+{
+  "name": "l402-agent",
+  "version": "0.1.0",
+  "description": "L402 Lightning paywall middleware + client for AI agents.",
+  "main": "lib/index.js",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "keywords": ["l402", "lightning", "bitcoin", "paywall", "ai", "agent", "http-402", "nwc"],
+  "author": "Jeletor",
+  "license": "MIT",
+  "peerDependencies": {
+    "lightning-agent": ">=0.1.0"
+  }
+}
