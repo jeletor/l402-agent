@@ -341,6 +341,107 @@ console.log('\nRoundtrip (header generation → parsing → verification):');
   assert(verified, 'server verifies preimage matches payment hash');
 }
 
+// ─── Credential Cache Tests ───
+
+console.log('\n💾 Credential Cache Tests');
+console.log('────────────────────────────────────────');
+
+const { CredentialCache, getGlobalCache, createL402Client } = require('./lib');
+
+console.log('\nCache operations:');
+
+{
+  const cache = new CredentialCache({ maxSize: 10, defaultTtlMs: 60000 });
+  
+  // Test set/get
+  cache.set('https://api.example.com/resource', {
+    macaroon: 'abc123',
+    preimage: 'def456'
+  });
+  
+  const cred = cache.get('https://api.example.com/resource');
+  assert(cred !== null, 'retrieves cached credential');
+  assert(cred.macaroon === 'abc123', 'macaroon matches');
+  assert(cred.preimage === 'def456', 'preimage matches');
+  
+  // Test has()
+  assert(cache.has('https://api.example.com/resource'), 'has() returns true for cached');
+  assert(!cache.has('https://api.example.com/other'), 'has() returns false for uncached');
+  
+  // Test invalidate
+  cache.invalidate('https://api.example.com/resource');
+  assert(!cache.has('https://api.example.com/resource'), 'invalidate removes credential');
+  
+  // Test key normalization (query strings ignored)
+  cache.set('https://api.example.com/data?foo=bar', { macaroon: 'x', preimage: 'y' });
+  const credNoQuery = cache.get('https://api.example.com/data');
+  assert(credNoQuery !== null, 'retrieves credential regardless of query string');
+  
+  // Test method scoping
+  cache.set('https://api.example.com/write', { macaroon: 'post1', preimage: 'post2' }, 'POST');
+  const getScoped = cache.get('https://api.example.com/write', 'GET');
+  const postScoped = cache.get('https://api.example.com/write', 'POST');
+  assert(getScoped === null, 'method-scoped credentials not returned for wrong method');
+  assert(postScoped !== null, 'method-scoped credentials returned for correct method');
+  
+  cache.close();
+}
+
+console.log('\nCache expiry:');
+
+{
+  const cache = new CredentialCache({ defaultTtlMs: 100 }); // 100ms TTL
+  
+  cache.set('https://api.example.com/expiring', { macaroon: 'exp', preimage: 'exp' });
+  assert(cache.has('https://api.example.com/expiring'), 'credential exists immediately');
+  
+  // Wait for expiry
+  await new Promise(r => setTimeout(r, 150));
+  
+  assert(!cache.has('https://api.example.com/expiring'), 'credential expired after TTL');
+  
+  cache.close();
+}
+
+console.log('\nCache max size (LRU eviction):');
+
+{
+  const cache = new CredentialCache({ maxSize: 3 });
+  
+  cache.set('https://a.com/1', { macaroon: '1', preimage: '1' });
+  cache.set('https://b.com/2', { macaroon: '2', preimage: '2' });
+  cache.set('https://c.com/3', { macaroon: '3', preimage: '3' });
+  
+  assert(cache.stats().size === 3, 'cache at max size');
+  
+  // Add one more, should evict oldest
+  cache.set('https://d.com/4', { macaroon: '4', preimage: '4' });
+  
+  assert(cache.stats().size === 3, 'cache size unchanged after eviction');
+  assert(!cache.has('https://a.com/1'), 'oldest entry evicted');
+  assert(cache.has('https://d.com/4'), 'newest entry present');
+  
+  cache.close();
+}
+
+console.log('\nGlobal cache:');
+
+{
+  const global1 = getGlobalCache();
+  const global2 = getGlobalCache();
+  assert(global1 === global2, 'getGlobalCache returns same instance');
+}
+
+console.log('\ncreateL402Client:');
+
+{
+  const client = createL402Client({ 
+    wallet: { payInvoice: async () => ({ preimage: 'abc' }) },
+    maxAmountSats: 100 
+  });
+  assert(typeof client === 'function', 'createL402Client returns a function');
+}
+
 // ─── Summary ───
 
 console.log('\n' + '═'.repeat(40));

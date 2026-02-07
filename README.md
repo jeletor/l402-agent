@@ -114,6 +114,8 @@ Drop-in `fetch()` replacement that automatically handles L402 payment challenges
 | `wallet` | object | — | — | lightning-agent wallet instance (required for auto-pay) |
 | `maxAmountSats` | number | — | — | Refuse invoices above this amount |
 | `onPayment` | function | — | — | Callback: `({ invoice, preimage, amountSats }) => {}` |
+| `cache` | boolean | — | `true` | Cache credentials for reuse (saves sats) |
+| `credentialCache` | CredentialCache | — | global | Custom cache instance |
 
 **Behavior:**
 - If the response is not 402, returns it as-is
@@ -134,6 +136,47 @@ const response = await l402Fetch('https://api.example.com/data', {
 #### `parseWwwAuthenticate(header)`
 
 Parse a `WWW-Authenticate: L402 invoice="...", macaroon="..."` header. Returns `{ invoice, macaroon }` or `null`.
+
+#### `createL402Client(options)`
+
+Create a pre-configured client with shared settings:
+
+```javascript
+const { createL402Client } = require('l402-agent');
+const { createWallet } = require('lightning-agent');
+
+const client = createL402Client({
+  wallet: createWallet(process.env.NWC_URL),
+  maxAmountSats: 100
+});
+
+// All fetches use the same wallet and cache
+const res1 = await client('https://api.example.com/data');
+const res2 = await client('https://api.example.com/data'); // Uses cached credentials (free!)
+```
+
+#### `CredentialCache`
+
+Stores paid credentials for reuse. By default, a global cache is used automatically.
+
+```javascript
+const { CredentialCache, getGlobalCache } = require('l402-agent');
+
+// Create a custom cache
+const cache = new CredentialCache({
+  maxSize: 1000,      // Max entries (default: 1000)
+  defaultTtlMs: 3600000  // 1 hour (default)
+});
+
+// Use with l402Fetch
+await l402Fetch(url, { wallet, credentialCache: cache });
+
+// Or use the global cache
+const globalCache = getGlobalCache();
+globalCache.clear(); // Clear all cached credentials
+```
+
+**Why cache?** L402 credentials are typically valid for multiple requests. Caching saves sats by reusing paid credentials instead of paying again.
 
 ## Examples
 
